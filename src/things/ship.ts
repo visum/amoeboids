@@ -1,26 +1,24 @@
 import * as THREE from "three";
-import type { Thing } from "./thing.js";
-import type { Mobile } from "./mobile.js";
 
-export class Ship implements Thing, Mobile {
-  private _position: { x: number; y: number } = { x: 0, y: 0 };
-  private _velocity: { x: number; y: number } = { x: 0, y: 0.1 };
+export class Ship {
+  private _velocity: { x: number; y: number } = { x: 0, y: 0 };
+  private _posX: number = 0;
+  private _posY: number = 0;
   private _scene?: THREE.Scene;
+  private _heading: number = 0; // in rad
 
   private _drawables: THREE.Object3D[] = [];
-
-  get position() {
-    return this._position;
-  }
-
-  get velocity() {
-    return this._velocity;
-  }
 
   update() {
     const ship = this._drawables[0];
     const pos = ship.position;
-    pos.set(pos.x + this._velocity.x, 0, pos.y + this._velocity.y);
+
+    this._posX += this._velocity.x;
+    this._posY += this._velocity.y;
+
+    ship.rotation.y = this._heading;
+
+    pos.set(this._posX, 0, this._posY);
   }
 
   add(scene: THREE.Scene) {
@@ -53,5 +51,17 @@ export class Ship implements Thing, Mobile {
       return;
     }
     scene.remove(...this._drawables);
+  }
+
+  accel(delta: number) {
+    const vX = Math.sin(this._heading) * delta;
+    const vY = Math.cos(this._heading) * delta;
+
+    this._velocity.x += vX;
+    this._velocity.y += vY;
+  }
+
+  turn(delta: number) { // in rad
+    this._heading -= delta;
   }
 }

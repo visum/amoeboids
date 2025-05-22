@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { Ship } from "./things/ship.js";
 import { Amoeba } from "./things/amoeba.js";
+import { KeyboardController } from "./keyboard-controller.js";
 
 export interface GameOptions {
   canvas: HTMLCanvasElement;
@@ -14,6 +15,7 @@ export class Amoeboids {
   private _amoebas: Amoeba[] = [];
   private _running = false;
   private _tickHandler: () => void = () => { };
+  private _keyboardController: KeyboardController;
 
   constructor(options: GameOptions) {
     this._scene = new THREE.Scene();
@@ -52,6 +54,20 @@ export class Amoeboids {
 
     this._amoebas.push(a1, a2);
 
+    this._keyboardController = new KeyboardController(window.document.body, {
+      onFire: () => { },
+      onTurnR: () => {
+        this._ship.turn(0.1);
+      },
+      onTurnL: () => {
+        this._ship.turn(-0.1);
+      },
+      onAccel: () => {
+        this._ship.accel(0.5);
+      }
+    });
+
+    this._keyboardController.attach();
   }
 
   start() {
@@ -63,6 +79,7 @@ export class Amoeboids {
 
   tick() {
     if (this._running) {
+      this._keyboardController.process();
       this.update();
       this._renderer.render(this._scene, this._camera);
       window.requestAnimationFrame(this._tickHandler);

@@ -1,13 +1,6 @@
 import * as THREE from "three";
-import type { Thing } from "./thing";
-import type { Mobile } from "./mobile";
 
-export class Amoeba implements Thing, Mobile {
-  private _x: number;
-  private _y: number;
-  private _vX: number = 0;
-  private _vY: number = 0;
-
+export class Amoeba {
   private _originalVertices: Float32Array;
   private _time: number = 0;
 
@@ -17,9 +10,6 @@ export class Amoeba implements Thing, Mobile {
 
   constructor({ initialPosition, scene }: { initialPosition: { x: number, y: number }, scene: THREE.Scene }) {
     this._scene = scene;
-    this._x = initialPosition.x;
-    this._y = initialPosition.y;
-
     const geometry = this._createBlobGeometry();
     this._originalVertices = geometry.getAttribute('position').array.slice() as Float32Array;
     const material = new THREE.MeshBasicMaterial({
@@ -29,15 +19,7 @@ export class Amoeba implements Thing, Mobile {
 
     this._mesh = new THREE.Mesh(geometry, material);
 
-    this._mesh.position.set(this._x, 0, this._y);
-  }
-
-  get position() {
-    return { x: this._x, y: this._y };
-  }
-
-  get velocity() {
-    return { x: this._vX, y: this._vY };
+    this._mesh.position.set(initialPosition.x, 0, initialPosition.y);
   }
 
   update() {
@@ -58,9 +40,6 @@ export class Amoeba implements Thing, Mobile {
       array[baseIndex] = originalX + wobble;
       array[baseIndex + 2] = originalZ + wobble * 0.5;
     }
-
-
-
     positions.needsUpdate = true;
   }
 
