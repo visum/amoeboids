@@ -2,6 +2,7 @@ export class KeyboardController {
   private _element: HTMLElement;
   private _handlers: {
     onAccel: () => void,
+    onDeccel: () => void,
     onTurnL: () => void,
     onTurnR: () => void,
     onFire: () => void
@@ -11,6 +12,7 @@ export class KeyboardController {
 
   constructor(element: HTMLElement, handlers: {
     onAccel: () => void,
+    onDeccel: () => void,
     onTurnL: () => void,
     onTurnR: () => void,
     onFire: () => void
@@ -30,12 +32,9 @@ export class KeyboardController {
   }
 
   process() {
-    if (this._latches.has("accel")) {
-      this._handlers.onAccel();
-    }
-    if (this._latches.has("turnL")) {
-      this._handlers.onTurnL();
-    }
+    this._latches.has("accel") && this._handlers.onAccel();
+    this._latches.has("deccel") && this._handlers.onDeccel();
+    this._latches.has("turnL") && this._handlers.onTurnL();
     this._latches.has("turnR") && this._handlers.onTurnR();
     this._latches.has("fire") && this._handlers.onFire();
   }
@@ -46,6 +45,10 @@ export class KeyboardController {
         this._latches.add("accel");
         break;
       }
+      case "s": {
+        this._latches.add("deccel");
+        break;
+      }
       case "a": {
         this._latches.add("turnL");
         break;
@@ -54,7 +57,7 @@ export class KeyboardController {
         this._latches.add("turnR");
         break;
       }
-      case "space": {
+      case " ": {
         this._latches.add("fire");
         break;
       }
@@ -67,6 +70,10 @@ export class KeyboardController {
         this._latches.delete("accel");
         break;
       }
+      case "s": {
+        this._latches.delete("deccel");
+        break;
+      }
       case "a": {
         this._latches.delete(("turnL"));
         break;
@@ -75,7 +82,7 @@ export class KeyboardController {
         this._latches.delete(("turnR"));
         break;
       }
-      case "space": {
+      case " ": {
         this._latches.delete("fire");
       }
     }

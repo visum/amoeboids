@@ -1,15 +1,21 @@
 import * as THREE from "three";
+import type { Collidable } from "../types/collidable";
 
-export class Amoeba {
+export abstract class Amoeba implements Collidable {
   private _originalVertices: Float32Array;
   private _time: number = 0;
-
-  private _scene: THREE.Scene;
-
+  private _scene?: THREE.Scene;
   private _mesh: THREE.Mesh;
+  private _veolcity: { x: number, y: number } = { x: 0, y: 0 };
+  private _radius: number;
+  // left, right, top, bottom 
+  private _boundary: [number, number, number, number] = [-100, -100, 100, 100];
 
-  constructor({ initialPosition, scene }: { initialPosition: { x: number, y: number }, scene: THREE.Scene }) {
-    this._scene = scene;
+  abstract size: number;
+
+
+  constructor({ initialPosition, velocity, radius }: { initialPosition: { x: number, y: number }, velocity: { x: number, y: number }, radius: number }) {
+    this._radius = radius;
     const geometry = this._createBlobGeometry();
     this._originalVertices = geometry.getAttribute('position').array.slice() as Float32Array;
     const material = new THREE.MeshBasicMaterial({
@@ -17,9 +23,26 @@ export class Amoeba {
       side: THREE.DoubleSide
     });
 
+    this._veolcity = velocity;
+
     this._mesh = new THREE.Mesh(geometry, material);
 
     this._mesh.position.set(initialPosition.x, 0, initialPosition.y);
+  }
+
+  get collisionRadius() {
+    return this._radius;
+  }
+
+  get position(): { x: number, y: number } {
+    return {
+      x: this._mesh.position.x,
+      y: this._mesh.position.z,
+    };
+  }
+
+  setBoundary(boundary: [number, number, number, number]) {
+    this._boundary = boundary;
   }
 
   update() {
@@ -41,6 +64,25 @@ export class Amoeba {
       array[baseIndex + 2] = originalZ + wobble * 0.5;
     }
     positions.needsUpdate = true;
+
+    let x = this._mesh.position.x += this._veolcity.x;
+    // our y is THREE z
+    let y = this._mesh.position.z += this._veolcity.y;
+
+    if (x < this._boundary[0]) {
+      x = this._boundary[1];
+    }
+    if (x > this._boundary[1]) {
+      x = this._boundary[0];
+    }
+    if (y < this._boundary[3]) {
+      y = this._boundary[2];
+    }
+    if (y > this._boundary[2]) {
+      y = this._boundary[3];
+    }
+
+    this._mesh.position.set(x, 0, y);
   }
 
   add(scene: THREE.Scene) {
@@ -50,7 +92,7 @@ export class Amoeba {
   }
 
   remove() {
-    this._scene.remove(this._mesh);
+    this._scene?.remove(this._mesh);
   }
 
   private _createBlobGeometry() {
@@ -58,7 +100,7 @@ export class Amoeba {
     const vertices: number[] = [];
     const indices: number[] = [];
     const segments = 12;
-    const radius = 40;
+    const radius = this._radius;
 
     // Center vertex
     vertices.push(0, 0, 0);
