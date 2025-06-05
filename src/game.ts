@@ -5,7 +5,7 @@ import { AmoebaBig } from "./things/amoeba_big.js";
 import { AmoebaMedium } from "./things/amoeba_medium.js";
 import { AmoebaSmall } from "./things/amoeba_small.js";
 import { KeyboardController } from "./keyboard-controller.js";
-import { CollissionDetection } from "./collision_detection.js";
+import { SetCollissionDetection } from "./set_collision_detection.js";
 import { Clock } from "./clock.js";
 import { Bullet } from "./things/bullet.js";
 
@@ -18,16 +18,18 @@ export class Amoeboids {
   private _camera: THREE.OrthographicCamera;
   private _renderer: THREE.WebGLRenderer;
   private _ship: Ship;
-  private _amoebas: Amoeba[] = [];
+  private _amoebas = new Set<Amoeba>();
   private _keyboardController: KeyboardController;
   private _clock: Clock;
   private _bulletLastTime = 0;
-  private _bullets: Bullet[] = [];
+  private _bullets = new Set<Bullet>();
 
   private _bulletMaxAge = 3_000; // ms
 
-  private _shipCollisionDetector: CollissionDetection;
-  private _bulletCollisionDetectors = new Map<Bullet, CollissionDetection>();
+  private _shipCollisionDetector: SetCollissionDetection;
+  private _bulletCollisionDetectors = new Map<Bullet, SetCollissionDetection>();
+
+  private _level = 1;
 
   // left right top bottom
   private _boundary: [number, number, number, number];
@@ -66,14 +68,7 @@ export class Amoeboids {
     this._ship.setBoundary(this._boundary);
     this._ship.add(this._scene);
 
-    const a1 = new AmoebaBig({ initialPosition: { x: 200, y: 300 }, velocity: { x: this._getRandomAmoebaVelocityFactor(), y: this._getRandomAmoebaVelocityFactor() } });
-    const a2 = new AmoebaBig({ initialPosition: { x: -100, y: -60 }, velocity: { x: this._getRandomAmoebaVelocityFactor(), y: this._getRandomAmoebaVelocityFactor() } });
-    a1.setBoundary(this._boundary);
-    a2.setBoundary(this._boundary);
-    a1.add(this._scene);
-    a2.add(this._scene);
-
-    this._amoebas.push(a1, a2);
+    this.nextLevel();
 
     this._keyboardController = new KeyboardController(window.document.body, {
       onFire: () => {
@@ -86,10 +81,10 @@ export class Amoeboids {
         this._ship.turn(-0.1);
       },
       onAccel: () => {
-        this._ship.accel(0.5);
+        this._ship.accel(0.2);
       },
       onDeccel: () => {
-        this._ship.accel(-0.2);
+        this._ship.accel(-0.1);
       }
     });
 
@@ -98,8 +93,7 @@ export class Amoeboids {
       this._addStar();
     }
 
-
-    this._shipCollisionDetector = new CollissionDetection(this._ship, this._amoebas);
+    this._shipCollisionDetector = new SetCollissionDetection(this._ship, this._amoebas);
   }
 
   start() {
@@ -120,18 +114,18 @@ export class Amoeboids {
 
     this._bullets.forEach(b => b.update());
 
-    const oldBulletIndexes: number[] = [];
+    const oldBullets: Bullet[] = [];
 
-    for (let i = 0; i < this._bullets.length; i++) {
-      const b = this._bullets[i];
+    for (const b of this._bullets.values()) {
       if (b.age > this._bulletMaxAge) {
-        oldBulletIndexes.push(i);
+        oldBullets.push(b);
       }
     }
 
-    for (let i = 0; i < oldBulletIndexes.length; i++) {
-      this._bullets[i].remove();
-      this._bullets.splice(i, 1);
+    for (const b of oldBullets) {
+      this._bulletCollisionDetectors.delete(b)
+      b.remove();
+      this._bullets.delete(b);
     }
 
     this._amoebas.forEach(a => a.update());
@@ -149,7 +143,7 @@ export class Amoeboids {
       // an array of amoeba indexes
       const collisions = cd.process();
       for (let i = 0; i < collisions.length; i++) {
-        hitAmoebas.add(this._amoebas[collisions[i]]);
+        hitAmoebas.add(collisions[i] as Amoeba);
         hitBullets.add(b);
       }
     }
@@ -159,10 +153,7 @@ export class Amoeboids {
     }
 
     for (const b of hitBullets.values()) {
-      const bulletIndex = this._bullets.indexOf(b);
-      if (bulletIndex > -1) {
-        this._bullets.splice(bulletIndex, 1);
-      }
+      this._bullets.delete(b);
       this._bulletCollisionDetectors.delete(b);
       b.remove();
     }
@@ -190,24 +181,73 @@ export class Amoeboids {
 
     const b = new Bullet({ initialPosition: this._ship.position, speed: bSpeed, heading: bAngle });
     b.add(this._scene);
-    this._bullets.push(b);
+    this._bullets.add(b);
 
-    const cd = new CollissionDetection(b, this._amoebas);
+    const cd = new SetCollissionDetection(b, this._amoebas);
     this._bulletCollisionDetectors.set(b, cd);
   }
 
-  private _amoebaHit(amoeba: Amoeba) {
-    const amoebaIndex = this._amoebas.indexOf(amoeba);
-    if (amoebaIndex > -1) {
-      this._amoebas.splice(amoebaIndex);
+  nextLevel() {
+    this._level += 1;
+    this._placeAmoebas(Math.round(this._level * 2.4));
+  }
+
+  private _placeAmoebas(count: number) {
+    const shipPosition = this._ship.position;
+
+    for (let i = 0; i < count; i++) {
+      const amoebaPosition = this._getAmoebaPosition(shipPosition, 100);
+      if (!amoebaPosition) {
+        continue;
+      }
+      const a = new AmoebaBig({ initialPosition: amoebaPosition, velocity: { x: this._getRandomAmoebaVelocityFactor(), y: this._getRandomAmoebaVelocityFactor() } });
+      a.setBoundary(this._boundary);
+      this._amoebas.add(a);
+      a.add(this._scene);
     }
+  }
+
+  private _getAmoebaPosition(shipPos: { x: number, y: number }, minDistance: number) {
+    // boundary is left right top bottom
+    const zones = [
+      // left side
+      { minX: this._boundary[0], maxX: shipPos.x - minDistance, minY: this._boundary[3], maxY: this._boundary[2] },
+      // right side
+      { minX: shipPos.x + minDistance, maxX: this._boundary[1], minY: this._boundary[3], maxY: this._boundary[2] },
+      // top side
+      { minX: this._boundary[0], maxX: this._boundary[1], minY: this._boundary[3], maxY: shipPos.y - minDistance },
+      // bottom side
+      { minX: this._boundary[0], maxX: this._boundary[1], minY: shipPos.y + minDistance, maxY: this._boundary[2] }
+    ];
+
+    const validZones = zones.filter(z => z.minX < z.maxX && z.minY < z.maxY);
+
+    if (validZones.length === 0) {
+      return;
+    }
+
+    const zone = validZones[Math.floor(Math.random() * validZones.length)];
+
+    return {
+      x: zone.minX + Math.random() * (zone.maxX - zone.minX),
+      y: zone.minY + Math.random() * (zone.maxY - zone.minY)
+    };
+  }
+
+  private _amoebaHit(amoeba: Amoeba) {
+    this._amoebas.delete(amoeba);
     amoeba.remove();
     const smallers = this._multiplyAmoeba(amoeba);
+
     smallers.forEach(a => {
       a.add(this._scene);
-      this._amoebas.push(a);
+      this._amoebas.add(a);
     }
     );
+
+    if (this._amoebas.size === 0) {
+      this.nextLevel();
+    }
   }
 
   private _multiplyAmoeba(amoeba: Amoeba) {
@@ -215,9 +255,9 @@ export class Amoeboids {
       // make mediums
       const startPosition = { ...amoeba.position };
       // add smaller ones
-      const a1 = new AmoebaMedium({ velocity: { x: this._getRandomAmoebaVelocityFactor(), y: this._getRandomAmoebaVelocityFactor() }, initialPosition: { ...startPosition } });
-      const a2 = new AmoebaMedium({ velocity: { x: this._getRandomAmoebaVelocityFactor(), y: this._getRandomAmoebaVelocityFactor() }, initialPosition: { ...startPosition } });
-      const a3 = new AmoebaMedium({ velocity: { x: this._getRandomAmoebaVelocityFactor(), y: this._getRandomAmoebaVelocityFactor() }, initialPosition: { ...startPosition } });
+      const a1 = new AmoebaMedium({ velocity: { x: this._getRandomAmoebaVelocityFactor(2), y: this._getRandomAmoebaVelocityFactor(2) }, initialPosition: { ...startPosition } });
+      const a2 = new AmoebaMedium({ velocity: { x: this._getRandomAmoebaVelocityFactor(2), y: this._getRandomAmoebaVelocityFactor(2) }, initialPosition: { ...startPosition } });
+      const a3 = new AmoebaMedium({ velocity: { x: this._getRandomAmoebaVelocityFactor(2), y: this._getRandomAmoebaVelocityFactor(2) }, initialPosition: { ...startPosition } });
 
       a1.setBoundary(this._boundary);
       a2.setBoundary(this._boundary);
@@ -228,9 +268,9 @@ export class Amoeboids {
     if (amoeba.size === 2) {
       const startPosition = { ...amoeba.position };
       // add smaller ones
-      const a1 = new AmoebaSmall({ velocity: { x: this._getRandomAmoebaVelocityFactor(), y: this._getRandomAmoebaVelocityFactor() }, initialPosition: { ...startPosition } });
-      const a2 = new AmoebaSmall({ velocity: { x: this._getRandomAmoebaVelocityFactor(), y: this._getRandomAmoebaVelocityFactor() }, initialPosition: { ...startPosition } });
-      const a3 = new AmoebaSmall({ velocity: { x: this._getRandomAmoebaVelocityFactor(), y: this._getRandomAmoebaVelocityFactor() }, initialPosition: { ...startPosition } });
+      const a1 = new AmoebaSmall({ velocity: { x: this._getRandomAmoebaVelocityFactor(3), y: this._getRandomAmoebaVelocityFactor(3) }, initialPosition: { ...startPosition } });
+      const a2 = new AmoebaSmall({ velocity: { x: this._getRandomAmoebaVelocityFactor(3), y: this._getRandomAmoebaVelocityFactor(3) }, initialPosition: { ...startPosition } });
+      const a3 = new AmoebaSmall({ velocity: { x: this._getRandomAmoebaVelocityFactor(3), y: this._getRandomAmoebaVelocityFactor(3) }, initialPosition: { ...startPosition } });
 
       a1.setBoundary(this._boundary);
       a2.setBoundary(this._boundary);
@@ -258,7 +298,7 @@ export class Amoeboids {
     this._scene.add(circle);
   }
 
-  private _getRandomAmoebaVelocityFactor() {
-    return (Math.random() * 0.8) - 0.4;
+  private _getRandomAmoebaVelocityFactor(multiplier = 1) {
+    return ((Math.random() * 0.8) - 0.4) * multiplier;
   }
 }
