@@ -8,9 +8,22 @@ import { KeyboardController } from "./keyboard-controller.js";
 import { SetCollissionDetection } from "./set_collision_detection.js";
 import { Clock } from "./clock.js";
 import { Bullet } from "./things/bullet.js";
+import { TextMode, TextOverlay } from "./text_overlay.js";
+
+import { FontLoader } from 'three/examples/jsm/Addons.js';
+
+// eslint-disable-next-line
+import fontPath from "three/examples/fonts/optimer_regular.typeface.json?url";
 
 export interface GameOptions {
   canvas: HTMLCanvasElement;
+}
+
+enum GameState {
+  WELCOME,
+  PLAY,
+  PAUSE,
+  OVER
 }
 
 export class Amoeboids {
@@ -24,12 +37,20 @@ export class Amoeboids {
   private _bulletLastTime = 0;
   private _bullets = new Set<Bullet>();
 
+  private _score = 0;
+
   private _bulletMaxAge = 3_000; // ms
 
   private _shipCollisionDetector: SetCollissionDetection;
   private _bulletCollisionDetectors = new Map<Bullet, SetCollissionDetection>();
 
+  private _textOverlay?: TextOverlay;
+
   private _level = 1;
+
+  private _currentState: GameState = GameState.WELCOME;
+
+  private _isPaused = false;
 
   // left right top bottom
   private _boundary: [number, number, number, number];
@@ -68,7 +89,7 @@ export class Amoeboids {
     this._ship.setBoundary(this._boundary);
     this._ship.add(this._scene);
 
-    this.nextLevel();
+    this._setup();
 
     this._keyboardController = new KeyboardController(window.document.body, {
       onFire: () => {
@@ -85,6 +106,19 @@ export class Amoeboids {
       },
       onDeccel: () => {
         this._ship.accel(-0.1);
+      },
+      onPause: () => {
+        if (this._currentState === GameState.PLAY) {
+          this.pause();
+        }
+      },
+      onStart: () => {
+        if (this._currentState === GameState.WELCOME || this._currentState === GameState.PAUSE) {
+          this.start();
+        }
+        if (this._currentState === GameState.OVER) {
+          this._setup();
+        }
       }
     });
 
@@ -94,22 +128,59 @@ export class Amoeboids {
     }
 
     this._shipCollisionDetector = new SetCollissionDetection(this._ship, this._amoebas);
+
+    const fontLoader = new FontLoader();
+    fontLoader.load(fontPath, (font) => {
+      this._textOverlay = new TextOverlay(this._scene, font, this._boundary);
+      this._textOverlay.setMode(TextMode.welcome);
+    });
+  }
+
+  ready() {
+    this._currentState = GameState.WELCOME;
+    this._isPaused = true;
+    this._clock.start();
   }
 
   start() {
-    this._clock.start();
+    this._isPaused = false;
+    this._currentState = GameState.PLAY;
+    this._textOverlay?.setMode(TextMode.play);
+  }
+
+  pause() {
+    this._currentState = GameState.PAUSE;
+    this._textOverlay?.setMode(TextMode.pause);
+    this._isPaused = true;
+
+    //this._clock.pause();
+  }
+
+  unpause() {
+    this._isPaused = false;
+    this._currentState = GameState.PLAY;
+    this._textOverlay?.setMode(TextMode.play);
+  }
+
+  gameOver() {
+    this._isPaused = true;
+    this._textOverlay?.setMode(TextMode.over);
+    this._currentState = GameState.OVER;
   }
 
   tick() {
     this._keyboardController.process();
-    this.update();
+    this.loop();
     this._renderer.render(this._scene, this._camera);
   }
 
   /**
    *  THE GAME LOOP
    **/
-  update(): void {
+  loop(): void {
+    if (this._isPaused) {
+      return;
+    }
     this._ship.update();
 
     this._bullets.forEach(b => b.update());
@@ -133,8 +204,7 @@ export class Amoeboids {
 
     if (shipCollisions.length > 0) {
       //game over!
-      console.log("You died");
-      this._clock.pause();
+      this.gameOver();
     }
 
     const hitAmoebas = new Set<Amoeba>();
@@ -158,9 +228,22 @@ export class Amoeboids {
       b.remove();
     }
 
+    // update the score
+    this._textOverlay?.setScore(this._score);
   }
 
   fire() {
+    // reusing the spacebar for starting
+    if (this._currentState === GameState.WELCOME) {
+      this.start();
+      return;
+    }
+
+    if (this._currentState === GameState.PAUSE) {
+      this.start();
+      return;
+    }
+
     if (this._bulletLastTime + 200 > Date.now()) {
       return;
     }
@@ -190,6 +273,21 @@ export class Amoeboids {
   nextLevel() {
     this._level += 1;
     this._placeAmoebas(Math.round(this._level * 2.4));
+  }
+
+  private _setup() {
+    for (const a of this._amoebas) {
+      a.remove();
+    }
+    this._amoebas.clear();
+    this._score = 0;
+    this._ship.reset();
+    this._textOverlay?.setMode(TextMode.welcome);
+    this._currentState = GameState.WELCOME;
+    this._level = 1;
+    this.nextLevel();
+
+    this._renderer.render(this._scene, this._camera);
   }
 
   private _placeAmoebas(count: number) {
@@ -238,6 +336,18 @@ export class Amoeboids {
     this._amoebas.delete(amoeba);
     amoeba.remove();
     const smallers = this._multiplyAmoeba(amoeba);
+
+    switch (amoeba.size) {
+      case 3: // a big one
+        this._score += 10;
+        break;
+      case 2:
+        this._score += 15;
+        break;
+      case 1:
+        this._score += 20;
+        break;
+    }
 
     smallers.forEach(a => {
       a.add(this._scene);

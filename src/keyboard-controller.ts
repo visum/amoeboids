@@ -5,7 +5,9 @@ export class KeyboardController {
     onDeccel: () => void,
     onTurnL: () => void,
     onTurnR: () => void,
-    onFire: () => void
+    onFire: () => void,
+    onPause: () => void,
+    onStart: () => void,
   }
 
   private _latches = new Set<string>();
@@ -15,7 +17,9 @@ export class KeyboardController {
     onDeccel: () => void,
     onTurnL: () => void,
     onTurnR: () => void,
-    onFire: () => void
+    onFire: () => void,
+    onPause: () => void,
+    onStart: () => void,
   }) {
     this._element = element;
     this._handlers = handlers;
@@ -59,6 +63,14 @@ export class KeyboardController {
       }
       case " ": {
         this._latches.add("fire");
+        break;
+      }
+      case "Escape": {
+        this._handlers.onPause();
+        break;
+      }
+      case "Enter": {
+        this._handlers.onStart();
         break;
       }
     }

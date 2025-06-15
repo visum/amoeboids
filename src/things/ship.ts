@@ -29,6 +29,14 @@ export class Ship implements Collidable {
     return this._velocity;
   }
 
+  reset() {
+    this._velocity = { x: 0, y: 0 };
+    this._heading = 0;
+    this._posX = 0;
+    this._posY = 0;
+    this.update();
+  }
+
   setBoundary(boundary: [number, number, number, number]) {
     this._boundary = boundary;
   }
