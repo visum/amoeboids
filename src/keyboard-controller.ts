@@ -23,6 +23,8 @@ export class KeyboardController {
   }) {
     this._element = element;
     this._handlers = handlers;
+    this._downObserver = this._downObserver.bind(this);
+    this._upObserver = this._upObserver.bind(this);
   }
 
   attach() {
